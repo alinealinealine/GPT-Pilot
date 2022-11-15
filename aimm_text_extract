@@ -1,0 +1,56 @@
+library(tidytext)
+library(tidyverse)
+library(tidyr)
+library(purrr)
+library(readxl)
+library(janitor)
+
+
+# This file is to extract the aimm narrative into text. 
+cd_raw <- "C:/Users/XWeng/OneDrive - WBG/Aline_Project/GPT_AIMM/Narrative Data/Raw/MAS_delegate"
+
+
+# delegated projects ----
+
+# identify the files and needed docs.
+flds <- list.files(cd_raw,recursive = TRUE) %>%
+  as.data.frame() %>%
+  rename(file_name = '.') %>%
+  mutate(dr = file_name) %>% #use this as directory
+  separate(file_name, c("fld_name","file","file_2"), sep = "/")%>%
+  mutate(file = case_when( !is.na(file_2) ~ file_2,
+                           TRUE ~ file)) %>%
+  select(-file_2) %>%
+  mutate(fld_name = case_when( fld_name == "Indospace COVID-19 Debt (43802)" ~ "Indospace COVID Debt (43802)",
+                               fld_name == "SRF 2022 Loan (47219)" ~ "SRF Loan (47219)",
+                               fld_name == "45013 Agrofertil 2021" ~ "45013 Agrofertil",
+                               fld_name == "Amaggi Cotton" ~ "Amaggi Cotton(43740)",
+                               fld_name == "Rupshi Foods final document" ~ "Rupshi Foods final document (46329)",
+                               TRUE ~ fld_name)) %>%
+  mutate(id = as.numeric(gsub("[^\\d]+", "", fld_name, perl=TRUE))) %>%
+  filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model",file,ignore.case = TRUE)) #Maybe we need IS report later (content), concept note (abstract)
+
+# use the directory to extract the text. 
+files <- flds %>%
+  mutate(full_dir = paste0(cd_raw,"/",dr))%>%
+  filter(grepl(".docx$",dr)) #there's pdf potentially can be used. 
+  
+
+aimm_mas <- map(files$full_dir[1:70],readtext::readtext) %>% #there's warning between 70-80, need to figure out. 
+  bind_rows()
+
+# read in the sector and country data 
+
+ops <- read_csv("IFC_disclosure_investment_11.2022.csv") %>%
+  clean_names() %>%
+  select(project_number,sector,country_description,region_description) %>%
+  distinct() 
+
+master_sample <- files %>%
+  select(id,file) %>%
+  right_join(aimm_mas,c("file" = "doc_id")) %>%
+  left_join(ops,c("id" = "project_number")) %>%
+  select(id, file, region_description, country_description, sector, text)
+
+write_csv(master_sample,"master_sample.csv")
+  
