@@ -4,6 +4,8 @@ library(tidyr)
 library(purrr)
 library(readxl)
 library(janitor)
+library(xlsx)
+install.packages("xlsx")
 
 
 # This file is to extract the aimm narrative into text. 
@@ -17,40 +19,38 @@ flds <- list.files(cd_raw,recursive = TRUE) %>%
   as.data.frame() %>%
   rename(file_name = '.') %>%
   mutate(dr = file_name) %>% #use this as directory
-  separate(file_name, c("fld_name","file","file_2"), sep = "/")%>%
+  separate(file_name, c("fld_name","file","file_2"), sep = "/") %>% #get the file name when there are multiple layers of files
   mutate(file = case_when( !is.na(file_2) ~ file_2,
                            TRUE ~ file)) %>%
   select(-file_2) %>%
-  mutate(fld_name = case_when( fld_name == "Indospace COVID-19 Debt (43802)" ~ "Indospace COVID Debt (43802)",
-                               fld_name == "SRF 2022 Loan (47219)" ~ "SRF Loan (47219)",
-                               fld_name == "45013 Agrofertil 2021" ~ "45013 Agrofertil",
-                               fld_name == "Amaggi Cotton" ~ "Amaggi Cotton(43740)",
+  mutate(fld_name = case_when( fld_name == "Amaggi Cotton" ~ "Amaggi Cotton(43740)",  #correct cases where the project number is not specified in the folder name. 
                                fld_name == "Rupshi Foods final document" ~ "Rupshi Foods final document (46329)",
                                TRUE ~ fld_name)) %>%
-  mutate(id = as.numeric(gsub("[^\\d]+", "", fld_name, perl=TRUE))) %>%
-  filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model",file,ignore.case = TRUE)) #Maybe we need IS report later (content), concept note (abstract)
-
-# use the directory to extract the text. 
-files <- flds %>%
+  mutate(id = as.numeric(gsub("[^[:digit:]]", "", 
+                              regmatches(fld_name, regexpr("\\b\\d{5}\\b", fld_name))))) %>%
+  filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model",file,ignore.case = TRUE)) %>% #Maybe we need IS report later (content), concept note (abstract)
+  filter(grepl("board paper|narrative|aimm",file,ignore.case = TRUE)) %>% #filter out AIMM narrative documents.
   mutate(full_dir = paste0(cd_raw,"/",dr))%>%
   filter(grepl(".docx$",dr)) #there's pdf potentially can be used. 
-  
 
-aimm_mas <- map(files$full_dir[1:70],readtext::readtext) %>% #there's warning between 70-80, need to figure out. 
-  bind_rows()
+# use the directory to extract the text. 
+aimm_mas <- map(flds$full_dir[c(1:54,56:90,92:101)],readtext::readtext) %>% 
+  bind_rows() %>%
+  mutate(word_c = str_count(text, "\\b\\w+\\b")) #count the number of words
+
+ #there's warning on 55: IBS III (45637)/IBS_Sonagrin_Additionality_AIMM_Assessment_draft.docx (because it's encrypted)
+ #there's warning on 91: Sunshine (43150)/Board paper Sunshine (#43150) 19Nov20 v2[2305843009214489141].docx
 
 # read in the sector and country data 
-
 ops <- read_csv("IFC_disclosure_investment_11.2022.csv") %>%
   clean_names() %>%
   select(project_number,sector,country_description,region_description) %>%
   distinct() 
 
-master_sample <- files %>%
-  select(id,file) %>%
+mas_delegate <- flds %>%
+  select(id,file,full_dir) %>%
   right_join(aimm_mas,c("file" = "doc_id")) %>%
   left_join(ops,c("id" = "project_number")) %>%
-  select(id, file, region_description, country_description, sector, text)
+  select(id, file, region_description, country_description, sector, word_c, full_dir, text)
 
-write_csv(master_sample,"master_sample.csv")
-  
+save(mas_delegate, file ="mas_delegate.rda")
