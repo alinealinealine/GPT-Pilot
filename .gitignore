@@ -53,3 +53,5 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
+GPT-Pilot.Rproj
+aimm_text_mas_test.R
