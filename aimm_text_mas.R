@@ -14,11 +14,9 @@ library(readtext)
 library(officer)
 
 
-# Read folder location address from file
+# Read folder location address from file -----
 folder_paths <- read.csv(file = "./file_location.csv") %>%
-  mutate(path = gsub("\\\\", "/", path)) #The file has location for both delegated and panel approved projects
-
-wd <-getwd()
+  mutate(path = gsub("\\\\", "/", path)) #' The file has location for both delegated and panel approved projects
 
 if (grepl("xweng", getwd(),ignore.case = TRUE)) {
   folder_paths <- folder_paths %>%
@@ -27,69 +25,78 @@ if (grepl("xweng", getwd(),ignore.case = TRUE)) {
 
 #' Considering the variation in how different sector store their information, it might be wise to split this into sections.
 #' Currently doing conditions based on sector only but possible to nuance further based on approval type. 
-#' Converting most of the code below into a function
 
-read_mas <- function(fldr_path){
+# Extract the narrative -----
+read_paths <- function(fldr_paths){
   # identify the files and needed docs. (write a function )
-  flds <- list.files(path = fldr_path ,recursive = TRUE) %>%
-    as.data.frame() %>%
-    rename(file_name = '.') %>%
-    mutate(dr = file_name) %>% #use this as directory
-    mutate(file_name = sub(".*/", "", dr)) %>% #get the file name when there are multiple layers of files
-    mutate(fld_name = sapply(dr, function(x) {
-      parts <- strsplit(x, "/")[[1]]
-      part <- parts[grep("\\b[0-9]{5}\\b", parts)][1]
-      part
-    })) %>%
-    mutate(fld_name = case_when( grepl("Amaggi Cotton", file_name) ~ "Amaggi Cotton(43740)",  #correct cases where the project number is not specified in the folder name. 
-                                 grepl( "Rupshi Foods final document", file_name) ~ "Rupshi Foods final document (46329)",
-                                 TRUE ~ fld_name)) %>%
-    mutate(id = ifelse(grepl("\\b\\d{5}\\b", fld_name), 
-                       as.numeric(gsub("[^[:digit:]]", "", regmatches(fld_name, regexpr("\\b\\d{5}\\b", fld_name)))), 
-                       NA)) %>%
-    filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model",file_name,ignore.case = TRUE)) %>% #Maybe we need IS report later (content), concept note (abstract)
-    filter(grepl("board paper|narrative|aimm",file_name,ignore.case = TRUE)) %>% #filter out AIMM narrative documents.
-    mutate(full_dir = paste0(fldr_path,"/",dr))%>%
-    filter(grepl(".docx$",dr)) #there's pdf potentially can be used. 
+  get_path <- function(fldr_path){list.files(path = fldr_path ,recursive = TRUE) %>%
+      as.data.frame() %>%
+      rename(file_name = '.') %>%
+      mutate(dr = file_name) %>% #use this as directory
+      mutate(file_name = sub(".*/", "", dr)) %>% #get the file name when there are multiple layers of files
+      mutate(fld_name = sapply(dr, function(x) {
+        parts <- strsplit(x, "/")[[1]]
+        part <- parts[grep("\\b[0-9]{5}\\b", parts)][1]
+        part
+      })) %>%
+      mutate(fld_name = case_when( grepl("Amaggi Cotton", file_name) ~ "Amaggi Cotton(43740)",  
+                                   grepl( "Rupshi Foods final document", file_name) ~ "Rupshi Foods final document (46329)",
+                                   #correct cases where the project number is not specified in the folder name.(above are just fixation for delegated_mas files)
+                                   TRUE ~ fld_name)) %>%
+      mutate(id = ifelse(grepl("\\b\\d{5}\\b", fld_name), 
+                         as.numeric(gsub("[^[:digit:]]", "", regmatches(fld_name, regexpr("\\b\\d{5}\\b", fld_name)))), 
+                         NA)) %>%
+      filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model",file_name,ignore.case = TRUE)) %>% #Maybe we need IS report later (content), concept note (abstract)
+      filter(grepl("board paper|narrative|aimm",file_name,ignore.case = TRUE)) %>% #filter out AIMM narrative documents.
+      mutate(full_dir = paste0(fldr_path,"/",dr))%>%
+      filter(grepl(".docx$",dr)) #there's pdf potentially can be used.
+  }
+  flds <- lapply(fldr_paths, get_path) %>%
+    do.call(rbind,.)
   
   # use the directory to extract the text. 
-  file_list <- flds$full_dir[which(!(flds$id %in% c(45637,42506)))]
+  file_list <- flds$full_dir
   
-  aimm_mas <- map2(file_list, seq_along(file_list), function(file, file_index) {
-    doc <- read_docx(file)
-    summary <- docx_summary(doc)
-    summary$file_path <- file
-    summary$file_index <- file_index
-    summary
-  }) %>% 
-    bind_rows()
+  aimm <- purrr::map_dfr(flds$full_dir, function(file) {
+    tryCatch({
+      doc <- officer::read_docx(file)
+      summary <- officer::docx_summary(doc)
+      tibble(summary = summary, folder_path = file)
+    }, error = function(e) {
+      message(sprintf("Error reading file %s: %s", file, e$message))
+      tibble(summary = NA, folder_path = file)
+    })
+  })
   
-  mas_delegate <- flds %>%
+  final <- flds %>%
     select(id,file_name,full_dir) %>%
-    right_join(aimm_mas,c("full_dir" = "file_path")) 
+    right_join(aimm,c("full_dir" = "folder_path")) 
   
-  mas_delegate
-  #there's warning on 55: "IBS III (45637)/IBS_Sonagrin_Additionality_AIMM_Assessment_draft.docx" (because it's encrypted)
+  final
 }
 
-mas_del_path <- folder_paths %>%
-  filter(approval_type == "manager" & sector == "MAS") %>%
+sector_select <- "MAS"
+
+# Define the folder paths
+del_path <- folder_paths %>%
+  filter(approval_type == "manager" & sector == sector_select) %>%
   pull(path)
 
-mas_pan_path <- folder_paths %>%
-  filter(approval_type == "panel" & sector == "MAS") %>%
+pan_path <- folder_paths %>%
+  filter(approval_type == "panel" & sector == sector_select) %>%
   pull(path)
 
-mas_delegate <- read_mas(mas_del_path)
-mas_panel <- read_mas(mas_pan_path) #many folder without project number specified. Need data cleaning help/ or only get file from FY20 (redefine another function)
+fldr_paths <- c(del_path,pan_path)
 
-#merge the text data with features. 
-save(mas_delegate, file ="mas_delegate.rda")
+# Extract AIMM narrative
+final <- read_paths(fldr_paths)
+
+# Export file
+save(final, file = paste0(sector_select,".rda"))
 
 
+# read in the sector and country data, and merge with the aimm database (in the master file) -----
 
-
-#### ----- read in the sector and country data, and the aimm database (later merge to master)
 #ops_full <- read_csv("./IFC_disclosure_investment_11.2022.csv") %>%
 #  clean_names() 
 
