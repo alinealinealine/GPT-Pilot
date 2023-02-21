@@ -91,6 +91,26 @@ fldr_paths <- c(del_path,pan_path)
 # Extract AIMM narrative
 final <- read_paths(fldr_paths)
 
-# Export file
-save(final, file = paste0(sector_select,".rda"))
+# Split the narrative into sections
+section_split <-function(file){
+  sections <- file %>%
+    group_by(id) %>%     
+    mutate(summary_n = n()) %>%
+    filter(summary_n > 100) %>% # earlier assessments are too short. 
+    filter(!grepl("board|questions",file_name,ignore.case = TRUE)) %>% #filter out not relevant doc
+    mutate(summary_text = summary$text)  %>%
+    group_by(id) %>% 
+    mutate(start_idx = which(str_detect(summary_text, regex("^(?i)development impact|(?i)development impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes |PROJECT IMPACTS", ignore_case = TRUE)))[1]) %>%
+    mutate(end_idx = which(str_detect(summary_text, regex("(The )?Assessment of Contribution to Market Creation|Market (creation|outcome) | ^(?i)Assessment of Market Outcomes | Market Creation – |market impact", ignore_case = TRUE)))[1]) %>%
+    filter(!is.na(start_idx)) %>% 
+    mutate(section = case_when( row_number() %in% 1:start_idx ~ "addi",
+                                row_number() %in% start_idx:(end_idx-1) ~ "dev_impct_p",
+                                row_number() %in% end_idx:n() ~ "dev_impct_m")
+    )
+  sections
+}
 
+final_section <- section_split(final)
+
+# Export file
+save(final_section, file = paste0(sector_select,".rda"))
