@@ -26,7 +26,22 @@ if (grepl("xweng", getwd(),ignore.case = TRUE)) {
 #' Considering the variation in how different sector store their information, it might be wise to split this into sections.
 #' Currently doing conditions based on sector only but possible to nuance further based on approval type. 
 
+sector_select <- "CDF"
+
 # Extract the narrative -----
+
+# Define the folder paths
+del_path <- folder_paths %>%
+  filter(approval_type == "manager" & sector == sector_select) %>%
+  pull(path)
+
+pan_path <- folder_paths %>%
+  filter(approval_type == "panel" & sector == sector_select) %>%
+  pull(path)
+
+fldr_paths <- c(del_path,pan_path)
+
+# Extract AIMM narrative
 read_paths <- function(fldr_paths){
   # identify the files and needed docs. (write a function )
   get_path <- function(fldr_path){list.files(path = fldr_path ,recursive = TRUE) %>%
@@ -75,23 +90,13 @@ read_paths <- function(fldr_paths){
   final
 }
 
-sector_select <- "CDF"
-
-# Define the folder paths
-del_path <- folder_paths %>%
-  filter(approval_type == "manager" & sector == sector_select) %>%
-  pull(path)
-
-pan_path <- folder_paths %>%
-  filter(approval_type == "panel" & sector == sector_select) %>%
-  pull(path)
-
-fldr_paths <- c(del_path,pan_path)
-
-# Extract AIMM narrative
 final <- read_paths(fldr_paths)
 
+save(final, file = paste0(sector_select,".rda"))
+
 # Split the narrative into sections
+load(file = paste0(sector_select,".rda"))
+
 section_split <-function(file){
   sections <- file %>%
     group_by(id) %>%     
@@ -101,8 +106,9 @@ section_split <-function(file){
     mutate(summary_text = summary$text)  %>%
     group_by(id) %>% 
     mutate(start_idx = which(str_detect(summary_text, regex("^(?i)development impact|(?i)development impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes |PROJECT IMPACTS", ignore_case = TRUE)))[1]) %>%
-    mutate(end_idx = which(str_detect(summary_text, regex("(The )?Assessment of Contribution to Market Creation|Market (creation|outcome) | ^(?i)Assessment of Market Outcomes | Market Creation – |market impact", ignore_case = TRUE)))[1]) %>%
+    mutate(end_idx = which(str_detect(summary_text, regex("(Assessment of )?contribution to market creation|^(?i)(Assessment of Market Creation|(The )?contribution to market creation|market creation:|market creation)", ignore_case = TRUE)))[1]) %>%
     filter(!is.na(start_idx)) %>% 
+    filter(start_idx < end_idx) %>%
     mutate(section = case_when( row_number() %in% 1:start_idx ~ "addi",
                                 row_number() %in% start_idx:(end_idx-1) ~ "dev_impct_p",
                                 row_number() %in% end_idx:n() ~ "dev_impct_m")
@@ -112,5 +118,11 @@ section_split <-function(file){
 
 final_section <- section_split(final)
 
+# Accuracy on section splitting
+good <- final_section$id %>% unique() %>% length()
+good
+total <- final$id %>% unique() %>% length()
+good/total #70%
+
 # Export file
-save(final_section, file = paste0(sector_select,".rda"))
+save(final_section, file = paste0(sector_select,"_section.rda"))
