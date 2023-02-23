@@ -102,7 +102,7 @@ section_split <-function(file){
     group_by(id) %>%     
     mutate(summary_n = n()) %>%
     filter(summary_n > 100) %>% # earlier assessments are too short. 
-    filter(!grepl("board|questions",file_name,ignore.case = TRUE)) %>% #filter out not relevant doc
+    filter(!grepl("board|questions",file_name,ignore.case = TRUE)) %>% #filter out not relevant doc (need check some case they have board)
     mutate(summary_text = summary$text)  %>%
     group_by(id) %>% 
     mutate(start_idx = which(str_detect(summary_text, regex("^(?i)development impact|(?i)development impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes |PROJECT IMPACTS", ignore_case = TRUE)))[1]) %>%
@@ -116,7 +116,7 @@ section_split <-function(file){
   sections
 }
 
-final_section <- section_split(final)
+final_section <- section_split(final) # need take out the table content. ??
 
 # Accuracy on section splitting
 good <- final_section$id %>% unique() %>% length()
