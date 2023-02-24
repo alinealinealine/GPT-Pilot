@@ -12,7 +12,9 @@ library(janitor)
 library(xlsx)
 library(readtext)
 library(officer)
-
+library(docxtractr)
+library(readr)
+library(stringr)
 
 # Read folder location address from file -----
 folder_paths <- read.csv(file = "./file_location.csv") %>%
@@ -79,6 +81,7 @@ read_paths <- function(fldr_paths){
       tibble(summary = summary, folder_path = file)
     }, error = function(e) {
       message(sprintf("Error reading file %s: %s", file, e$message))
+      capture.output(e$message, file = "List_reading_error.txt",append = T)
       tibble(summary = NA, folder_path = file)
     })
   })
@@ -87,12 +90,68 @@ read_paths <- function(fldr_paths){
     select(id,file_name,full_dir) %>%
     right_join(aimm,c("full_dir" = "folder_path")) 
   
-  final
+  return(final)
 }
 
 final <- read_paths(fldr_paths)
 
 save(final, file = paste0(sector_select,".rda"))
+
+# Extract AIMM indicators -----
+## This approach uses docxtractr 
+# Extracting the Tables 
+indicator <- lapply(unique(flds$full_dir), function(file) {
+  output <- data.frame(matrix(data=NA,nrow=1,ncol=4)) 
+  names(output) <- c("file","project_indicator","market_indicator","reporting_indicator")
+  output$file <- file
+  tryCatch({
+    table_list <- docxtractr::docx_extract_all_tbls(docx = docxtractr::read_docx(file),guess_header = F,preserve = T) #List of all tables in the doc
+    for(tbl in table_list){ #Looping through all tables in the doc
+      #Check for DOTS template
+      if(any(grepl(x = unlist(tbl[,1]),pattern = ".*Financial.*|.*Economic.*|.*Private Sector Development.*|.*Performance.*|.*Environment.*|.*Social.*"))){ 
+        output$project_indicator <- "DOTS TEMPLATE"
+        output$market_indicator <- "DOTS Template"
+        output$reporting_indicator <- "DOTS Tempalte" 
+     }else{ #check for old format
+      print("identified old format table")
+      if(any(grepl(x = unlist(tbl[,1]),pattern = ".*Project Outcomes.*|.*Market Creation.*|.*Coporate Reporting.*|.*Mandatory Reach.*|.*Strategic Indicators.*"))){
+        output$project_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,1]),pattern = ".*Project.*")):(which(grepl(x = unlist(tbl[,1]),pattern = ".*Market.*"))-1),3],delim="; ")
+        output$market_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,1]),pattern = ".*Market.*")):(which(grepl(x = unlist(tbl[,1]),pattern = ".*Reach.*|.*Reporting.*"))-1),3],delim=", ")
+        output$reporting_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,1]),pattern = ".*Reach.*|.*Reporting.*")):nrow(tbl),3],delim=", ")
+      }else{
+        #Checking if new format
+      if(ncol(tbl)>=7){ #First checking for a table with more than 7 columns - as AIMM table should have 7/8 columns
+        print("identified possible format table")
+        # if(any(all(tbl[1,1:4] == c("Description of Indicator", "Indicator", "Baseline", "Target")), #Then checking first level of headers - these might match with other indicator tables as well (if they are in annex etc.)
+        #     all(tbl[2,5:7]==c("Project", "Market", "Reporting")))){ #Final check with second level of headers - these are unlikely to repeat in this order and location across any other table
+        if(any(unlist(tbl[1:2,]) %in% c("Project", "Market", "Reporting"))){
+          print("confirmed new format table")
+          #Extracting the indicators
+          output$project_indicator <- format_delim(tbl[which(tbl[,5]=="X"),2],delim="; ")
+          output$market_indicator <- format_delim(tbl[which(tbl[,6]=="X"),2],delim=", ")
+          output$reporting_indicator <- format_delim(tbl[which(tbl[,7]=="X"),2],delim=", ")
+        }
+      }
+      }
+      #Exiting the loop
+    }}
+    rm(tbl,table_list)
+    return(output)
+  },error = function(e) {
+    message(sprintf("Error reading file %s: %s", file, e$message))
+    capture.output(e$message, file = "List_reading_error.txt",append = T)
+    return(output)
+  })
+
+})
+indicator <- do.call(rbind.data.frame,indicator)
+temp <- final %>%
+  group_by(id) %>%     
+  mutate(summary_n = n()) %>%
+  mutate(summary_text = summary$text,
+         summary_style = summary$content_type)
+
+
 
 # Split the narrative into sections ----
 load(file = paste0(sector_select,".rda"))
