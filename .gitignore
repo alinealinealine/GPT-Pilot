@@ -12,6 +12,7 @@
 *.csv
 *.RData
 *.rda
+*.txt
 
 
 # Example code in package build process
@@ -58,3 +59,4 @@ aimm_text_mas_test.R
 aimm_text_test.R
 pdf_test.docx
 aimm_text_test.R
+Coverfox Approved Board Paper.pdf

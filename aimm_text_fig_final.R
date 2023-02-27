@@ -107,35 +107,39 @@ indicator <- lapply(unique(final$full_dir), function(file) {
   output$file <- file
   tryCatch({
     table_list <- docxtractr::docx_extract_all_tbls(docx = docxtractr::read_docx(file),guess_header = F,preserve = T) #List of all tables in the doc
+    #Filtering tables based on dimensions 
+    table_list <- table_list %>% 
+      map_lgl(~(ncol(.) > 4 & ncol(.) < 9)) %>% 
+      magrittr::extract(table_list, .)
+    
     for(tbl in table_list){ #Looping through all tables in the doc
-      #Check for DOTS template
-      if(any(grepl(x = unlist(tbl[,1]),pattern = ".*Financial.*|.*Economic.*|.*Private Sector Development.*|.*Performance.*|.*Environment.*|.*Social.*"))){ 
-        output$project_indicator <- "DOTS TEMPLATE"
-        output$market_indicator <- "DOTS Template"
-        output$reporting_indicator <- "DOTS Tempalte" 
-     }else{ #check for old format
-      print("identified old format table")
-      if(any(grepl(x = unlist(tbl[,1]),pattern = ".*Project Outcomes.*|.*Market Creation.*|.*Coporate Reporting.*|.*Mandatory Reach.*|.*Strategic Indicators.*"))){
-        output$project_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,1]),pattern = ".*Project.*")):(which(grepl(x = unlist(tbl[,1]),pattern = ".*Market.*"))-1),3],delim="; ")
-        output$market_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,1]),pattern = ".*Market.*")):(which(grepl(x = unlist(tbl[,1]),pattern = ".*Reach.*|.*Reporting.*"))-1),3],delim=", ")
-        output$reporting_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,1]),pattern = ".*Reach.*|.*Reporting.*")):nrow(tbl),3],delim=", ")
-      }else{
-        #Checking if new format
-      if(ncol(tbl)>=7){ #First checking for a table with more than 7 columns - as AIMM table should have 7/8 columns
-        print("identified possible format table")
-        # if(any(all(tbl[1,1:4] == c("Description of Indicator", "Indicator", "Baseline", "Target")), #Then checking first level of headers - these might match with other indicator tables as well (if they are in annex etc.)
-        #     all(tbl[2,5:7]==c("Project", "Market", "Reporting")))){ #Final check with second level of headers - these are unlikely to repeat in this order and location across any other table
-        if(any(unlist(tbl[1:2,]) %in% c("Project", "Market", "Reporting"))){
-          print("confirmed new format table")
+      #Remvoing cases of Additionality tables
+      if(any(grepl(x = c(unlist(tbl[1,]),unlist(tbl[,1])),pattern = ".*[Aa]dditionality.*"))) next
+      if(any(grepl(x = unlist(tbl[1,2:ncol(tbl)]),pattern = ".*Indicator.*|.*Target.*|.*Baseline.*"))){
+      #Checking if new format
+        if(all(any(grepl(x = unlist(tbl[1:3,4:ncol(tbl)]),pattern = ".*Project.*|.*Market.*|.*Reporting.*")),
+           ncol(tbl)>=7)){
           #Extracting the indicators
-          output$project_indicator <- format_delim(tbl[which(tbl[,5]=="X"),2],delim="; ")
-          output$market_indicator <- format_delim(tbl[which(tbl[,6]=="X"),2],delim=", ")
-          output$reporting_indicator <- format_delim(tbl[which(tbl[,7]=="X"),2],delim=", ")
-        }
-      }
-      }
+          indicator_col <- which(grepl(x = unlist(tbl[1,2:4]),pattern = ".*Indicator.*")) %>% ifelse(is_empty( .), 2 , . )
+          
+          output$project_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,5]),pattern = ".*X.*")),indicator_col],delim="; ")
+          output$market_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,6]),pattern = ".*X.*")),indicator_col],delim="; ")
+          output$reporting_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,7]),pattern = ".*X.*")),indicator_col],delim="; ")
+        }else if(any(grepl(x = unlist(tbl[,1]),pattern = ".*Financial.*|.*Economic.*|.*Private Sector Development.*|.*Project Outcomes.*|.*Market Creation.*|.*Coporate Reporting.*|.*Mandatory Reach.*|.*Strategic Indicators.*"))){
+          #check for old format and DOTS
+          project_start <- first(which(grepl(x = unlist(tbl[,1]),pattern = ".*Project.*|.*Financial.*")))
+          market_start <- first(which(grepl(x = unlist(tbl[,1]),pattern = ".*Market.*|.*Economic.*|.*Private Sector Development.*")))
+          reporting_start <- first(which(grepl(x = unlist(tbl[,1]),pattern = ".*Reach.*|.*Reporting.*|.*Environment.*|.*Social.*"))) %>% ifelse(is_empty( .), nrow(tbl)+1 , . )
+          indicator_col <- which(grepl(x = unlist(tbl[1,]),pattern = ".*Indicator.*")) %>% ifelse(is_empty( .), 3 , . )
+          
+          output$project_indicator <- format_delim(tbl[project_start:(market_start-1),indicator_col],delim="; ")
+          output$market_indicator <- format_delim(tbl[market_start:(reporting_start-1),indicator_col],delim="; ")
+          output$reporting_indicator <- if_else(reporting_start > nrow(tbl),NA,format_delim(tbl[reporting_start:nrow(tbl),indicator_col],delim="; "))
+          }
+        
       #Exiting the loop
-    }}
+      }
+    }
     rm(tbl,table_list)
     return(output)
   },error = function(e) {
@@ -144,8 +148,7 @@ indicator <- lapply(unique(final$full_dir), function(file) {
     return(output)
   })
 
-})
-indicator <- do.call(rbind.data.frame,indicator)
+}) %>% do.call(rbind.data.frame, . )
 
 
 # Split the narrative into sections ----
