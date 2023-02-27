@@ -18,11 +18,12 @@ library(stringr)
 
 # Read folder location address from file -----
 folder_paths <- read.csv(file = "./file_location.csv") %>%
-  mutate(path = gsub("\\\\", "/", path)) #' The file has location for both delegated and panel approved projects
+  mutate(path = gsub("\\\\", "/", path)) %>%
+  mutate(path = gsub("C:/Users/gjain5/WBG/Ahmad Famm Alkhuzam - CSE AIMM/Projects Documents/","C:/Users/XWeng/WBG/AIMM Repository - Projects Documents/",path)) #' The file has location for both delegated and panel approved projects
 
-if (grepl("xweng", getwd(),ignore.case = TRUE)) {
+if (grepl("gjain5", getwd(),ignore.case = TRUE)) {
   folder_paths <- folder_paths %>%
-    mutate(path = gsub("gjain5","xweng",path))
+    mutate(path = gsub("xweng","gjain5", path))
 } # If "xweng" is using this file, replace path "gjain5" with "xweng"
 
 #' Considering the variation in how different sector store their information, it might be wise to split this into sections.
@@ -63,7 +64,7 @@ read_paths <- function(fldr_paths){
       mutate(id = ifelse(grepl("\\b\\d{5}\\b", fld_name), 
                          as.numeric(gsub("[^[:digit:]]", "", regmatches(fld_name, regexpr("\\b\\d{5}\\b", fld_name)))), 
                          NA)) %>%
-      filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model",file_name,ignore.case = TRUE)) %>% #Maybe we need IS report later (content), concept note (abstract)
+      filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model|minutes|questions",file_name,ignore.case = TRUE)) %>% #Maybe we need IS report later (content), concept note (abstract)
       filter(grepl("board paper|narrative|aimm",file_name,ignore.case = TRUE)) %>% #filter out AIMM narrative documents.
       mutate(full_dir = paste0(fldr_path,"/",dr))%>%
       filter(grepl(".docx$",dr)) #there's pdf potentially can be used.
@@ -100,7 +101,7 @@ save(final, file = paste0(sector_select,".rda"))
 # Extract AIMM indicators -----
 ## This approach uses docxtractr 
 # Extracting the Tables 
-indicator <- lapply(unique(flds$full_dir), function(file) {
+indicator <- lapply(unique(final$full_dir), function(file) {
   output <- data.frame(matrix(data=NA,nrow=1,ncol=4)) 
   names(output) <- c("file","project_indicator","market_indicator","reporting_indicator")
   output$file <- file
@@ -145,12 +146,6 @@ indicator <- lapply(unique(flds$full_dir), function(file) {
 
 })
 indicator <- do.call(rbind.data.frame,indicator)
-temp <- final %>%
-  group_by(id) %>%     
-  mutate(summary_n = n()) %>%
-  mutate(summary_text = summary$text,
-         summary_style = summary$content_type)
-
 
 
 # Split the narrative into sections ----
@@ -167,16 +162,17 @@ final <- final %>%
   filter(!grepl("^table|^\\*", summary_text, ignore.case = TRUE)) %>%
   filter(!is.na(summary_text)) 
 
-final %>% count_id() #227 fig projects
+final %>% count_id() #228 fig projects
 
 # specify the regular expression for each section
- dev_impct <- "^^Development Impact|^Project’s Expected Development Impact|^(?!.*Additionality).*(?i)Development Impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes |^PROJECT IMPACTS"
- prjct_outcome <- "^Assessment of Project Outcomes"
- market_creation <- "(Assessment of )?contribution to market creation|^(?i)(Assessment of Market Creation|(The )?contribution to market creation|market creation:|market creation)"
+ dev_impct <- "^^Development Impact|^Project’s Expected Development Impact|^(?!.*Additionality).*(?i)Development Impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes|^PROJECT IMPACTS"
+ prjct_outcome <- "^Assessment of Project Outcome(s)?|^Project Outcome"
+ market_creation <- "^(Assessment of )?contribution to market creation|^(?i)(Assessment of Market Creation|^(The )?contribution to market creation|market creation:|^market creation)| Assessment of Contribution to Market Creation –|^Assessment of Market Outcomes"
 
 # the functions to help identify the sections
 identify_section <- function(file) {
   file %>%
+    mutate(summary_text = str_trim(summary_text))%>%
     group_by(id) %>% 
     mutate(aimm_idx = which(str_detect(summary_text,regex("^ADDITIONALITY|^( )?ADDITIONALITY|IFC’s Expected Additionality",ignore_case = TRUE)))[1],
            end_idx = which(str_detect(summary_text,regex("^APPENDIX|^( )?Results Measurement( -)?|^Results Measurement", ignore_case = TRUE)))[1]) %>%
@@ -193,7 +189,7 @@ identify_section <- function(file) {
 
 tagging_section <- function(file) {
   file %>%
-    filter(di_idx < prjct_idx,
+    filter(di_idx <= prjct_idx,
            prjct_idx < mrkt_idx) %>%
     mutate(section = case_when( row_number() %in% 1:(di_idx-1) ~ "addi",
                                 row_number() %in% di_idx:(prjct_idx-1) ~ "summary",
@@ -224,13 +220,15 @@ sections_bp <- bp %>%
 sections_bp$section %>% table()
 
 bp %>% count_id() #123 projects with board paper
-sections_bp %>% count_id() # 117 projects split successfully, 95%
+sections_bp %>% count_id() # 120 projects split successfully, 97%
 
 check_bp <- anti_join(bp,sections_bp,"id")%>% 
   identify_section()%>%
-  mutate(n_number = row_number()) %>%
+  mutate(n_number = row_number()) 
+
+check_bp %>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id) %>%
-  unique() # 6 projects have issue splitting different sections
+  unique() # 4 projects have issue splitting different sections
 
 # After splitting the BP, work on projects only have aimm narratives
 aimm <- anti_join(final,sections_bp,"id")
@@ -240,8 +238,8 @@ sections_aimm <- aimm %>%
   mutate(row_n = row_number()) %>%  
   tagging_section()
 
-aimm %>% count_id() #150 projects
-sections_aimm %>% count_id() #135 projects split successfully, 90%
+aimm %>% count_id() #110 projects
+sections_aimm %>% count_id() #101 projects split successfully
 
 check_aimm <- anti_join(aimm,sections_aimm,"id")%>% 
   identify_section()%>%
@@ -249,7 +247,7 @@ check_aimm <- anti_join(aimm,sections_aimm,"id")%>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id) %>%
   unique() # 14 projects need to be checked
 
-# Export file -----
+# Export file --- 
 
 # the project split by section
 final_section <- sections_bp %>%
@@ -257,7 +255,7 @@ final_section <- sections_bp %>%
   group_by(id,full_dir,file_name,section) %>%
   summarize(text = paste(summary_text,collapse = "\n\n")) 
 
-final_section %>% count_id() # 213 projects
+final_section %>% count_id() # 221 projects
 
 save(final_section, file = paste0(sector_select,"_section.rda"))
 
@@ -265,11 +263,12 @@ save(final_section, file = paste0(sector_select,"_section.rda"))
 final_check <- final %>%
   anti_join(final_section, "id") %>%
   identify_section()%>%
-  mutate(n_number = row_number()) %>%
+  mutate(n_number = row_number())  %>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id, full_dir, file_name) %>%
   unique() 
 
-save(final_check, file = paste0(sector_select,"_section_check.rda"))
+save(final_check, file = paste0(sector_select,"_section_check.rda")) # 5 projects
+write_csv(final_check, file = paste0(sector_select,"_section_check.csv"))
 
 accuracy <- 1- final_check %>% count_id()/final %>% count_id()
-accuracy #94.3%
+accuracy #97.8%
