@@ -16,6 +16,9 @@ library(docxtractr)
 library(readr)
 library(stringr)
 
+#Removing any files from previous run 
+file.remove("./List_reading_error.txt")
+
 # Read folder location address from file -----
 folder_paths <- read.csv(file = "./file_location.csv") %>%
   mutate(path = gsub("\\\\", "/", path)) %>%
@@ -82,7 +85,7 @@ read_paths <- function(fldr_paths){
       tibble(summary = summary, folder_path = file)
     }, error = function(e) {
       message(sprintf("Error reading file %s: %s", file, e$message))
-      capture.output(e$message, file = "List_reading_error.txt",append = T)
+      capture.output(paste("Doc Reading error:",e$message), file = "List_reading_error.txt",append = T)
       tibble(summary = NA, folder_path = file)
     })
   })
@@ -144,7 +147,7 @@ indicator <- lapply(unique(final$full_dir), function(file) {
     return(output)
   },error = function(e) {
     message(sprintf("Error reading file %s: %s", file, e$message))
-    capture.output(e$message, file = "List_reading_error.txt",append = T)
+    capture.output(paste("Indicator reading error:",e$message), file = "List_reading_error.txt",append = T)
     return(output)
   })
 
@@ -261,6 +264,12 @@ final_section <- sections_bp %>%
 final_section %>% count_id() # 221 projects
 
 save(final_section, file = paste0(sector_select,"_section.rda"))
+
+AIMM_text <- final_section %>% as.data.frame %>% 
+  reshape(data = . , idvar = "full_dir", timevar = "section",v.names  = "text", direction = "wide") %>% #Only 211 unique full_dir path
+  merge(x = . ,y = indicator,by.x="full_dir",by.y="file",all.x=T)
+
+save(AIMM_text, file = paste0(sector_select,"_AIMM_text.rda"))
 
 # projects need further checkup 
 final_check <- final %>%
