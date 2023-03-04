@@ -199,7 +199,7 @@ tagging_section <- function(file) {
            prjct_idx < mrkt_idx) %>%
     mutate(section = case_when( row_number() %in% 1:(di_idx-1) ~ "addi",
                                 row_number() %in% di_idx:(prjct_idx-1) ~ "summary",
-                                row_number() %in% prjct_idx:mrkt_idx ~ "dev_impct_p",
+                                row_number() %in% prjct_idx:(mrkt_idx-1) ~ "dev_impct_p",
                                 row_number() %in% mrkt_idx:n() ~ "dev_impct_m"
     )
     ) 
