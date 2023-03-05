@@ -99,6 +99,7 @@ save(final, file = paste0(sector_select,".rda"))
 # Extract AIMM indicators -----
 ## This approach uses docxtractr 
 # Extracting the Tables 
+load(file = paste0(sector_select,".rda"))
 indicator <- lapply(unique(final$full_dir), function(file) {
   output <- data.frame(matrix(data=NA,nrow=1,ncol=4)) 
   names(output) <- c("file","project_indicator","market_indicator","reporting_indicator")
@@ -147,7 +148,7 @@ indicator <- lapply(unique(final$full_dir), function(file) {
   })
 
 }) %>% do.call(rbind.data.frame, . )
-
+save(indicator, file =  paste0(sector_select,"_indicator.rda"))
 
 # Split the narrative into sections ----
 load(file = paste0(sector_select,".rda"))
@@ -220,7 +221,7 @@ sections_bp <- bp %>%
 
 sections_bp$section %>% table()
 
-bp %>% count_id() # 209 projects with board paper
+bp %>% count_id() # 209 projects with board paper as the file name
 sections_bp %>% count_id() # 190 projects split successfully
 
 check_bp <- anti_join(bp,sections_bp,"id")%>% 
@@ -231,7 +232,7 @@ check_bp %>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id) %>%
   unique() # 18 projects have issue splitting different sections
 
-# After splitting the BP, work on projects only have aimm narratives
+# After splitting the BP, work on projects that don't have board paper as the file name
 aimm <- anti_join(final,sections_bp,"id")
 
 sections_aimm <- aimm %>%
@@ -248,7 +249,7 @@ check_aimm <- anti_join(aimm,sections_aimm,"id")%>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id) %>%
   unique() # 14 projects need to be checked
 
-# Export file --- 
+# Export file ----
 
 # the project split by section
 final_section <- sections_bp %>%
@@ -257,22 +258,32 @@ final_section <- sections_bp %>%
   summarize(text = paste(summary_text,collapse = "\n\n")) 
 
 final_section %>% count_id() # 344 projects
-
 save(final_section, file = paste0(sector_select,"_section.rda"))
 
-AIMM_text <- final_section %>% as.data.frame %>% 
+# read in ifc disclosure data
+ifc_dscl <- read_csv("ifc_disclosure_03052023.csv") %>%
+  clean_names() %>%
+  select(project_name, project_number, country_description, region_description, project_description, sector) %>%
+  unique() %>%
+  rename(id = project_number) %>%
+  mutate(id = as.character(id))
+
+# organize the final data split by development impact sections
+AIMM_text <- final_section %>% 
+  as.data.frame %>% 
   reshape(data = . , idvar = "full_dir", timevar = "section",v.names  = "text", direction = "wide") %>% 
-  merge(x = . ,y = indicator,by.x="full_dir",by.y="file",all.x=T)
+  merge(x = . ,y = indicator,by.x="full_dir",by.y="file",all.x=T) %>% # add the indicators section
+  left_join(ifc_dscl, by = "id")
 
 save(AIMM_text, file = paste0(sector_select,"_AIMM_text.rda"))
 
-# projects need further checkup 
+# projects need further checkup ----
 final_check <- final %>%
   anti_join(final_section, "id") %>%
   identify_section()%>%
   mutate(n_number = row_number())  %>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id, full_dir, file_name) %>%
-  unique() 
+  unique() # listing the files that can't be converted into different sections
 
 save(final_check, file = paste0(sector_select,"_section_check.rda")) # 40 projects
 write_csv(final_check, file = paste0(sector_select,"_section_check.csv"))
