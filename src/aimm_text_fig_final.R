@@ -171,9 +171,9 @@ final <- final %>%
 final %>% count_id() #228 fig projects
 
 # specify the regular expression for each section
- dev_impct <- "^^Development Impact|^Project’s Expected Development Impact|^(?!.*Additionality).*(?i)Development Impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes|^PROJECT IMPACTS"
- prjct_outcome <- "^Assessment of Project Outcome(s)?|^Project Outcome"
- market_creation <- "^(Assessment of )?contribution to market creation|^(?i)(Assessment of Market Creation|^(The )?contribution to market creation|market creation:|^market creation)| Assessment of Contribution to Market Creation –|^Assessment of Market Outcomes"
+dev_impct <- "^^Development Impact|^Project’s Expected Development Impact|^(?!.*Additionality).*(?i)Development Impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes|^PROJECT IMPACTS"
+prjct_outcome <- "^Assessment of Project Outcome(s)?|^Project Outcome|Assessment of Project Outcomes:"
+market_creation <- "^(Assessment of )?contribution to market creation|^(?i)(Assessment of Market Creation|^(The )?contribution to market creation|market creation:|^market creation)| Assessment of Contribution to Market Creation –|^Assessment of Market Outcomes| Assessment of Contribution to Market Creation: "
 
 # the functions to help identify the sections
 identify_section <- function(file) {
