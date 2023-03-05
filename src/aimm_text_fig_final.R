@@ -21,13 +21,13 @@ file.remove("./List_reading_error.txt")
 
 # Read folder location address from file -----
 folder_paths <- read.csv(file = "./file_location.csv") %>%
-  mutate(path = gsub("\\\\", "/", path)) %>%
-  mutate(path = gsub("C:/Users/gjain5/WBG/Ahmad Famm Alkhuzam - CSE AIMM/Projects Documents/","C:/Users/XWeng/WBG/AIMM Repository - Projects Documents/",path)) #' The file has location for both delegated and panel approved projects
+  mutate(path = gsub("\\\\", "/", path))  #' The file has location for both delegated and panel approved projects
 
-if (grepl("gjain5", getwd(),ignore.case = TRUE)) {
+if (!grepl("gjain5", getwd(),ignore.case = TRUE)) {
   folder_paths <- folder_paths %>%
-    mutate(path = gsub("xweng","gjain5", path))
+    mutate(path = gsub( "C:/Users/gjain5/WBG/AIMM Repository - AIMM Resource Library/15. AIMM Projects Documents/Archive/Projects Documents","C:/Users/XWeng/WBG/AIMM Repository - Projects Documents",path))
 } # If "xweng" is using this file, replace path "gjain5" with "xweng"
+folder_paths
 
 #' Considering the variation in how different sector store their information, it might be wise to split this into sections.
 #' Currently doing conditions based on sector only but possible to nuance further based on approval type. 
@@ -46,6 +46,7 @@ pan_path <- folder_paths %>%
   pull(path)
 
 fldr_paths <- c(del_path,pan_path)
+fldr_paths
 
 # Extract AIMM narrative
 read_paths <- function(fldr_paths){
@@ -60,18 +61,12 @@ read_paths <- function(fldr_paths){
         part <- parts[grep("\\b[0-9]{5}\\b", parts)][1]
         part
       })) %>%
-      mutate(fld_name = case_when( grepl("Amaggi Cotton", file_name) ~ "Amaggi Cotton(43740)",  
-                                   grepl( "Rupshi Foods final document", file_name) ~ "Rupshi Foods final document (46329)",
-                                   #correct cases where the project number is not specified in the folder name.(above are just fixation for delegated_mas files)
-                                   TRUE ~ fld_name)) %>%
-      mutate(id = ifelse(grepl("\\b\\d{5}\\b", fld_name), 
-                         as.numeric(gsub("[^[:digit:]]", "", regmatches(fld_name, regexpr("\\b\\d{5}\\b", fld_name)))), 
-                         NA)) %>%
-      filter(!grepl(".pptx|.xlsx|irm|assistant|is report|is final report|pds|esap|esrs|model|minutes|questions",file_name,ignore.case = TRUE)) %>% #Maybe we need IS report later (content), concept note (abstract)
-      filter(grepl("board paper|narrative|aimm",file_name,ignore.case = TRUE)) %>% #filter out AIMM narrative documents.
+      mutate(id = str_extract(dr, "\\d{5}")) %>%
+      filter(!grepl(".pptx|.xlsx|.zip|irm|assistant|Assistance|Assisstant|Assitant|Assist|approach|Decision|AIMM Rating|memo|report|is final report|pds|esap|esrs|model|minutes|questions",file_name,ignore.case = TRUE)) %>% 
       mutate(full_dir = paste0(fldr_path,"/",dr))%>%
-      filter(grepl(".docx$",dr)) #there's pdf potentially can be used.
+      filter(grepl(".docx$",dr))
   }
+  
   flds <- lapply(fldr_paths, get_path) %>%
     do.call(rbind,.)
   
@@ -171,9 +166,9 @@ final <- final %>%
 final %>% count_id() #228 fig projects
 
 # specify the regular expression for each section
- dev_impct <- "^^Development Impact|^Project’s Expected Development Impact|^(?!.*Additionality).*(?i)Development Impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes|^PROJECT IMPACTS"
- prjct_outcome <- "^Assessment of Project Outcome(s)?|^Project Outcome"
- market_creation <- "^(Assessment of )?contribution to market creation|^(?i)(Assessment of Market Creation|^(The )?contribution to market creation|market creation:|^market creation)| Assessment of Contribution to Market Creation –|^Assessment of Market Outcomes"
+dev_impct <- "^^Development Impact|^Project’s Expected Development Impact|^(?!.*Additionality).*(?i)Development Impact$|The Project has an Anticipated Impact Measurement|Assessment of Project Outcomes|^PROJECT IMPACTS"
+prjct_outcome <- "^Assessment of Project Outcome(s)?|^Project Outcome|Assessment of Project Outcomes:"
+market_creation <- "^(Assessment of )?contribution to market creation|^(?i)(Assessment of Market Creation|^(The )?contribution to market creation|market creation:|^market creation)| Assessment of Contribution to Market Creation –|^Assessment of Market Outcomes| Assessment of Contribution to Market Creation: "
 
 # the functions to help identify the sections
 identify_section <- function(file) {
@@ -225,8 +220,8 @@ sections_bp <- bp %>%
 
 sections_bp$section %>% table()
 
-bp %>% count_id() #123 projects with board paper
-sections_bp %>% count_id() # 120 projects split successfully, 97%
+bp %>% count_id() # 209 projects with board paper
+sections_bp %>% count_id() # 190 projects split successfully
 
 check_bp <- anti_join(bp,sections_bp,"id")%>% 
   identify_section()%>%
@@ -234,7 +229,7 @@ check_bp <- anti_join(bp,sections_bp,"id")%>%
 
 check_bp %>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id) %>%
-  unique() # 4 projects have issue splitting different sections
+  unique() # 18 projects have issue splitting different sections
 
 # After splitting the BP, work on projects only have aimm narratives
 aimm <- anti_join(final,sections_bp,"id")
@@ -244,8 +239,8 @@ sections_aimm <- aimm %>%
   mutate(row_n = row_number()) %>%  
   tagging_section()
 
-aimm %>% count_id() #110 projects
-sections_aimm %>% count_id() #101 projects split successfully
+aimm %>% count_id() #197 projects
+sections_aimm %>% count_id() #154 projects split successfully
 
 check_aimm <- anti_join(aimm,sections_aimm,"id")%>% 
   identify_section()%>%
@@ -261,12 +256,12 @@ final_section <- sections_bp %>%
   group_by(id,full_dir,file_name,section) %>%
   summarize(text = paste(summary_text,collapse = "\n\n")) 
 
-final_section %>% count_id() # 221 projects
+final_section %>% count_id() # 344 projects
 
 save(final_section, file = paste0(sector_select,"_section.rda"))
 
 AIMM_text <- final_section %>% as.data.frame %>% 
-  reshape(data = . , idvar = "full_dir", timevar = "section",v.names  = "text", direction = "wide") %>% #Only 211 unique full_dir path
+  reshape(data = . , idvar = "full_dir", timevar = "section",v.names  = "text", direction = "wide") %>% 
   merge(x = . ,y = indicator,by.x="full_dir",by.y="file",all.x=T)
 
 save(AIMM_text, file = paste0(sector_select,"_AIMM_text.rda"))
@@ -279,8 +274,8 @@ final_check <- final %>%
   select(aimm_idx,di_idx,prjct_idx,mrkt_idx, end_idx,id, full_dir, file_name) %>%
   unique() 
 
-save(final_check, file = paste0(sector_select,"_section_check.rda")) # 5 projects
+save(final_check, file = paste0(sector_select,"_section_check.rda")) # 40 projects
 write_csv(final_check, file = paste0(sector_select,"_section_check.csv"))
 
 accuracy <- 1- final_check %>% count_id()/final %>% count_id()
-accuracy #97.8%
+accuracy #90%
