@@ -276,6 +276,7 @@ AIMM_text <- final_section %>%
   left_join(ifc_dscl, by = "id")
 
 save(AIMM_text, file = paste0(sector_select,"_AIMM_text.rda"))
+write.csv(AIMM_text, file = paste0(sector_select,"_AIMM_text.csv"))
 
 # projects need further checkup ----
 final_check <- final %>%
