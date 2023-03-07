@@ -20,12 +20,12 @@ library(stringr)
 file.remove("./List_reading_error.txt")
 
 # Read folder location address from file -----
-folder_paths <- read.csv(file = "./file_location.csv") %>%
+folder_paths <- read.csv(file = ".data/file_location.csv") %>%
   mutate(path = gsub("\\\\", "/", path))  #' The file has location for both delegated and panel approved projects
 
 if (!grepl("gjain5", getwd(),ignore.case = TRUE)) {
   folder_paths <- folder_paths %>%
-    mutate(path = gsub( "C:/Users/gjain5/WBG/AIMM Repository - AIMM Resource Library/15. AIMM Projects Documents/Archive/Projects Documents","C:/Users/XWeng/WBG/AIMM Repository - Projects Documents",path))
+    mutate(path = gsub( pattern = "C:/Users/gjain5/WBG/AIMM Repository - AIMM Resource Library/15. AIMM Projects Documents/Archive/Projects Documents",replacement = "C:/Users/XWeng/WBG/AIMM Repository - Projects Documents",x = path))
 } # If "xweng" is using this file, replace path "gjain5" with "xweng"
 folder_paths
 
@@ -119,21 +119,21 @@ indicator <- lapply(unique(final$full_dir), function(file) {
         if(all(any(grepl(x = unlist(tbl[1:3,4:ncol(tbl)]),pattern = ".*Project.*|.*Market.*|.*Reporting.*")),
            ncol(tbl)>=7)){
           #Extracting the indicators
-          indicator_col <- which(grepl(x = unlist(tbl[1,2:4]),pattern = ".*Indicator.*")) %>% ifelse(is_empty( .), 2 , . )
-          
-          output$project_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,5]),pattern = ".*X.*")),indicator_col],delim="; ")
-          output$market_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,6]),pattern = ".*X.*")),indicator_col],delim="; ")
-          output$reporting_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,7]),pattern = ".*X.*")),indicator_col],delim="; ")
+          indicator_col <- which(grepl(x = unlist(tbl[1,1:4]),pattern = ".*Indicator.*")) %>% ifelse(is_empty( .), 2 , . ) 
+          if(indicator_col==1){ indicator_col <- 2} #To avoid any 1st columns in indicators - will be fixed later
+          output$project_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,5]),pattern = ".*X.*")),indicator_col],delim="; ") %>% str_sub(start =  4)
+          output$market_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,6]),pattern = ".*X.*")),indicator_col],delim="; ") %>% str_sub(start =  4)
+          output$reporting_indicator <- format_delim(tbl[which(grepl(x = unlist(tbl[,7]),pattern = ".*X.*")),indicator_col],delim="; ") %>% str_sub(start =  4)
         }else if(any(grepl(x = unlist(tbl[,1]),pattern = ".*Financial.*|.*Economic.*|.*Private Sector Development.*|.*Project Outcomes.*|.*Market Creation.*|.*Coporate Reporting.*|.*Mandatory Reach.*|.*Strategic Indicators.*"))){
           #check for old format and DOTS
           project_start <- first(which(grepl(x = unlist(tbl[,1]),pattern = ".*Project.*|.*Financial.*")))
           market_start <- first(which(grepl(x = unlist(tbl[,1]),pattern = ".*Market.*|.*Economic.*|.*Private Sector Development.*")))
           reporting_start <- first(which(grepl(x = unlist(tbl[,1]),pattern = ".*Reach.*|.*Reporting.*|.*Environment.*|.*Social.*"))) %>% ifelse(is_empty( .), nrow(tbl)+1 , . )
           indicator_col <- which(grepl(x = unlist(tbl[1,]),pattern = ".*Indicator.*")) %>% ifelse(is_empty( .), 3 , . )
-          
-          output$project_indicator <- format_delim(tbl[project_start:(market_start-1),indicator_col],delim="; ")
-          output$market_indicator <- format_delim(tbl[market_start:(reporting_start-1),indicator_col],delim="; ")
-          output$reporting_indicator <- if_else(reporting_start > nrow(tbl),NA,format_delim(tbl[reporting_start:nrow(tbl),indicator_col],delim="; "))
+          if(indicator_col==1){ indicator_col <- 3} #To avoid any 1st columns in indicators - will be fixed later
+          output$project_indicator <- format_delim(tbl[project_start:(market_start-1),indicator_col],delim="; ") %>% str_sub(start =  4)
+          output$market_indicator <- format_delim(tbl[market_start:(reporting_start-1),indicator_col],delim="; ") %>% str_sub(start =  4)
+          output$reporting_indicator <- if_else(reporting_start > nrow(tbl),NA,format_delim(tbl[reporting_start:nrow(tbl),indicator_col],delim="; ")) %>% str_sub(start =  4)
           }
         
       #Exiting the loop
@@ -195,7 +195,9 @@ tagging_section <- function(file) {
            prjct_idx < mrkt_idx) %>%
     mutate(section = case_when( row_number() %in% 1:(di_idx-1) ~ "addi",
                                 row_number() %in% di_idx:(prjct_idx-1) ~ "summary",
+                                #row_number() %in% prjct_idx:prjct_idx+2 ~ "dev_impct_p_likelihood",
                                 row_number() %in% prjct_idx:(mrkt_idx-1) ~ "dev_impct_p",
+                                #row_number() %in% mrkt_idx:mrkt_idx+2 ~ "dev_impct_m_likelihood",
                                 row_number() %in% mrkt_idx:n() ~ "dev_impct_m"
     )
     ) 
