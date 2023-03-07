@@ -263,7 +263,7 @@ final_section %>% count_id() # 344 projects
 save(final_section, file = paste0(sector_select,"_section.rda"))
 
 # read in ifc disclosure data
-ifc_dscl <- read_csv("ifc_disclosure_03052023.csv") %>%
+ifc_dscl <- read_csv("./data/IFC_disclosure_investment_11.2022.csv") %>%
   clean_names() %>%
   select(project_name, project_number, country_description, region_description, project_description, sector) %>%
   unique() %>%
