@@ -3,13 +3,13 @@
 #' This script is aimed to scrap text narratives from a nested folder structure containing this narrative across multiple word files. 
 
 #Load necessary files
-library(tidytext)
 library(tidyverse)
+library(tidytext)
 library(tidyr)
 library(purrr)
 library(readxl)
 library(janitor)
-library(xlsx)
+#library(xlsx)
 library(readtext)
 library(officer)
 library(docxtractr)
@@ -17,25 +17,34 @@ library(readr)
 library(stringr)
 
 #Removing any files from previous run 
-file.remove("./List_reading_error.txt")
+file.remove("./output/List_reading_error.txt")
 
 # Read folder location address from file -----
-folder_paths <- read.csv(file = ".data/file_location.csv") %>%
+folder_paths <- read.csv(file = "./data/file_location.csv") %>%
   mutate(path = gsub("\\\\", "/", path))  #' The file has location for both delegated and panel approved projects
 
 if (!grepl("gjain5", getwd(),ignore.case = TRUE)) {
   folder_paths <- folder_paths %>%
     mutate(path = gsub( pattern = "C:/Users/gjain5/WBG/AIMM Repository - AIMM Resource Library/15. AIMM Projects Documents/Archive/Projects Documents",replacement = "C:/Users/XWeng/WBG/AIMM Repository - Projects Documents",x = path))
 } # If "xweng" is using this file, replace path "gjain5" with "xweng"
+
 folder_paths
 
 #' Considering the variation in how different sector store their information, it might be wise to split this into sections.
 #' Currently doing conditions based on sector only but possible to nuance further based on approval type. 
 
-sector_select <- "FIG"
+sector_select <- "ALL"
 
 # Extract the narrative -----
-
+if(sector_select=="ALL"){
+  del_path <- folder_paths %>%
+    filter(approval_type == "manager") %>%
+    pull(path) 
+  
+  pan_path <- folder_paths %>%
+    filter(approval_type == "panel") %>%
+    pull(path)
+}else{
 # Define the folder paths
 del_path <- folder_paths %>%
   filter(approval_type == "manager" & sector == sector_select) %>%
@@ -44,7 +53,7 @@ del_path <- folder_paths %>%
 pan_path <- folder_paths %>%
   filter(approval_type == "panel" & sector == sector_select) %>%
   pull(path)
-
+}
 fldr_paths <- c(del_path,pan_path)
 fldr_paths
 
